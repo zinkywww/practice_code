@@ -211,7 +211,7 @@
    * `HashSet`、`LinkedHashSet` 和 `TreeSet` 的主要区别在于底层数据结构不同。`HashSet` 的底层数据结构是哈希表（基于 `HashMap` 实现）。`LinkedHashSet` 的底层数据结构是链表和哈希表，元素的插入和取出顺序满足 FIFO。`TreeSet` 底层数据结构是红黑树，元素是有序的，排序的方式有自然排序和定制排序。
    * 底层数据结构不同又导致这三者的应用场景不同。`HashSet` 用于不需要保证元素插入和取出顺序的场景，`LinkedHashSet` 用于保证元素的插入和取出顺序满足 FIFO 的场景，`TreeSet` 用于支持对元素自定义排序规则的场景。
 
-4. HashTable和HashMap
+4. HashTable和HashSet
 
    * **线程是否安全：** `HashMap` 是非线程安全的，`Hashtable` 是线程安全的,因为 `Hashtable` 内部的方法基本都经过`synchronized` 修饰。
    * **效率：** 因为线程安全的问题，`HashMap` 要比 `Hashtable` 效率高一点。`Hashtable` 基本被淘汰；
@@ -219,7 +219,7 @@
    * **初始容量大小和每次扩充容量大小的不同：** ① 创建时如果不指定容量初始值，`Hashtable` 默认的初始大小为 11，之后每次扩充，容量变为原来的 2n+1。`HashMap` 默认的初始化大小为 16。之后每次扩充，容量变为原来的 2 倍。② 创建时如果给定了容量初始值，那么 `Hashtable` 会直接使用你给定的大小，而 `HashMap` 会将其扩充为 2 的幂次方大小
    * **底层数据结构：** JDK1.8 以后的 `HashMap` 在解决哈希冲突时有了较大的变化，当链表长度大于阈值（默认为 8）时，将链表转化为红黑树，以减少搜索时间。`Hashtable` 没有这样的机制。
 
-5. HashMap原理
+5. HashSet原理
 
    1. 重要类属性
 
@@ -491,3 +491,142 @@
    * 引用类型：把对象设置进原子类引用对象中，使用CAS设置。
 
 ### 13. JUC并发容器
+
+1. ConcurrentHashMap
+
+   1. 区别:
+      1. Java7 中 `ConcurrentHashMap` 使用的分段锁，也就是每一个 Segment 上同时只有一个线程可以操作，每一个 `Segment` 都是一个类似 `HashMap` 数组的结构，它可以扩容，它的冲突会转化为链表。但是 `Segment` 的个数一但初始化就不能改变。
+      2. Java8 中的 `ConcurrentHashMap` 使用的 `Synchronized` 锁加 CAS 的机制。结构 进化成了 **Node 数组 + 链表 / 红黑树**，Node 是类似于一个 HashEntry 的结构。它的冲突再达到一定大小时会转化成红黑树，在冲突小于一定数量时又退回链表。
+   2. 初始化
+      * 初始化通过自旋和CAS操作完成，变量sizeCtl控制初始化状态：
+        * sizeCtl<0,另外的线程正在初始化，当前线程让出CPU。
+        * sizeCtl>=0，没有线程正在进行初始化，通过CAS设置sizeCtl，然后进行初始化.如果sizeCtl=0则初始容量为DEFAULT_CAPACITY，否则为sizeCtl。
+   3. put方法：与HashMap类似，区别在于写入数据时需要同步。
+      * 计算当前key属于哪一个桶，如果桶为空，使用CAS直接放入。
+      * 如果桶不为空，使用synchronized获取该桶的首节点锁，再进行类似于HashMap的插入（链表插入、红黑树插入、链表转换...）
+
+2. CopyOnWriteArrayList
+
+   * 在 JDK1.5 之前，如果想要使用并发安全的 `List` 只能选择 `Vector`。而 `Vector` 是一种老旧的集合，已经被淘汰。`Vector` 对于增删改查等方法基本都加了 `synchronized`，这种方式虽然能够保证同步，但这相当于对整个 `Vector` 加上了一把大锁，使得每个方法执行的时候都要去获得锁，导致性能非常低下。
+   * JDK1.5 引入了 `Java.util.concurrent`（JUC）包，其中提供了很多线程安全且并发性能良好的容器，其中唯一的线程安全 `List` 实现就是 `CopyOnWriteArrayList` 。
+   * `CopyOnWriteArrayList` 线程安全的核心在于其采用了 **写时复制（Copy-On-Write）** 的策略,
+   * 当需要修改（ `add`，`set`、`remove` 等操作） `CopyOnWriteArrayList` 的内容时，不会直接修改原数组，而是会先创建底层数组的副本，对副本数组进行修改，修改完之后再将修改后的数组赋值回去，这样就可以保证写操作不会影响读操作了。即只有写写操作会互斥。
+
+3. ConcurrentLinkedQueue
+
+   * 非阻塞队列，使用链表作为底层数据结构，使用CAS来实现线程安全， 拥有较高的并发性能，内部实现复杂。
+
+4. BlockingQueue
+
+   1. 作用：阻塞队列（`BlockingQueue`）是一个接口，被广泛使用在“生产者-消费者”问题中，其原因是 `BlockingQueue` 提供了可阻塞的插入和移除的方法。当队列容器已满，生产者线程会被阻塞，直到队列未满；当队列容器为空时，消费者线程会被阻塞，直至队列非空时为止。有三个常见实现类：ArrayBlockingQueue，LinkedBlockingQueue，PriorityBlockingQueue。
+
+   2. ArrayBlockingQueue
+
+      * `ArrayBlockingQueue` 一旦创建，容量不能改变。其并发控制采用可重入锁 `ReentrantLock` ，不管是插入操作还是读取操作，都需要获取到锁才能进行操作。当队列容量满时，尝试将元素放入队列将导致操作阻塞;尝试从一个空队列中取一个元素也会同样阻塞。
+      * `ArrayBlockingQueue` 默认情况下不能保证线程访问队列的公平性。
+
+   3. LinkedBlockingQueue
+
+      * `LinkedBlockingQueue` 底层基于**单向链表**实现的阻塞队列，可以当做无界队列也可以当做有界队列来使用，同样满足 FIFO 的特性，与 `ArrayBlockingQueue` 相比起来具有更高的吞吐量，为了防止 `LinkedBlockingQueue` 容量迅速增，损耗大量内存。通常在创建 `LinkedBlockingQueue` 对象时，会指定其大小，如果未指定，容量等于 `Integer.MAX_VALUE` 
+
+   4. PriorityBlockingQueue
+
+      * `PriorityBlockingQueue` 是一个支持优先级的无界阻塞队列。默认情况下元素采用自然顺序进行排序，也可以通过自定义类实现 `compareTo()` 方法来指定元素排序规则，或者初始化时通过构造器参数 `Comparator` 来指定排序规则。
+
+        `PriorityBlockingQueue` 并发控制采用的是可重入锁 `ReentrantLock`，队列为无界队列（`ArrayBlockingQueue` 是有界队列，`LinkedBlockingQueue` 也可以通过在构造函数中传入 `capacity` 指定队列最大的容量，但是 `PriorityBlockingQueue` 只能指定初始的队列大小，后面插入元素的时候，**如果空间不够的话会自动扩容**）。
+
+        简单地说，它就是 `PriorityQueue` 的线程安全版本。不可以插入 null 值，同时，插入队列的对象必须是可比较大小的（comparable），否则报 `ClassCastException` 异常。它的插入操作 put 方法不会 block，因为它是无界队列（take 方法在队列为空的时候会阻塞）。
+
+### 14. AQS
+
+1. 概念
+
+   * 全称为 `AbstractQueuedSynchronizer` ，翻译过来的意思就是抽象队列同步器。是一个抽象类，用于构建锁和同步器。主要是通过继承方式使用，本身没有实现任何接口，仅仅是定义了同步状态的获取和释放的方法。AQS解决实现同步器的大量细节问题，例如获取同步状态，FIFO队列，入队和出队。自定义同步器在实现时候只需要实现共享资源state的获取和释放即可，至于获取资源失败入队/唤醒出队等，AQS在顶层已经定义好了。ReentrantLock`，`Semaphore，downtownLatch等都是通过AQS实现。
+
+2. 实现：
+
+   * AQS内部用一个[volatile](https://so.csdn.net/so/search?q=volatile&spm=1001.2101.3001.7020)修饰的int类型的成员变量state来控制同步状态。状态信息 `state` 可以通过`getState()`、`setState()`和`compareAndSetState()` 进行操作。并且，这几个方法都是 `final` 修饰的，在子类中无法被重写。
+
+   * 同步队列：AQS是依赖内部的同步队列实现，也就是FIFO双向队列，如果当前线程竞争锁失败，那么AQS会把当前线程以及等待状态封装成一个Node节点加入到同步队列中，同时阻塞该线程，当同步状态释放时，会把首节点唤醒，使其再次尝试获取同步状态。
+   * 等待队列：ConditionObject是AQS的内部类，等待队列是一个[FIFO](https://so.csdn.net/so/search?q=FIFO&spm=1001.2101.3001.7020)的队列，每个节点都包含一个线程的引用，该线程就是在Condition对象中等待的线程，如果线程调用了await方法，线程将会加入等待线程，释放锁，并进入等待状态。节点都是AQS的静态内部类Node。如果调用await方法，节点加入等待队列，并释放锁，调用signal方法，则将线程移到同步队列队尾，唤醒线程。
+
+3. AQS模式：
+
+   * 独占：实现tryAcquire-tryRelease，初始化state=0，获取锁时通过判断state是否为0，是则设置为1表示获取锁成功，否则阻塞。
+   * 共享模式：实现tryAcquireShared-tryReleaseShared，初始化state为n，获取时判断state是否大于0，是则使用CAS将state自减获取成功，否则阻塞。
+
+4. AQS实现ReentrantLock
+
+   * ReentrantLock是可重入独占锁，利用state维护共享状态。当线程调用lock()方法时，ReentrantLock会尝试通过tryAcquire（）获得该锁，利用CAS设置state的值如果成功从0设置为1则获取锁成功，获取失败则加入到等待队列。如果获取成功，此线程再次获取该锁，则将state值加1，实现可重入。在释放锁时，state的值为0才释放完成。
+
+5. AQS实现Semaphor
+
+   * Semaphor是共享锁，state的值初始化为许可证数量。信号量的P操作使用tryAcquire()实现，如果state大于0则获取成功，并利用CAS将state值减一，如果小于等于0则获取失败，加入等待队列。
+   * 释放许可证使用release，使用CAS将state值加1，并唤醒一个等待线程。被唤醒的线程会重新尝试获取许可证。
+
+6. AQS实现CountDownLatch
+
+   * CountDownLatch允许 `count` 个线程阻塞在一个地方，直至所有线程的任务都执行完毕。
+   * CountDownLatch是一种共享锁，当线程使用countDown时，内部调用了`tryReleaseShared`方法以 CAS 的操作来减少 `state`,直至 `state` 为 0 。当调用 `await()` 方法的时候，如果 `state` 不为 0，那就证明任务还没有执行完毕，`await()` 方法就会一直阻塞，也就是说 `await()` 方法之后的语句不会被执行。直到`count` 个线程调用了`countDown()`使 state 值被减为 0，或者调用`await()`的线程被中断，该线程才会从阻塞中被唤醒，`await()` 方法之后的语句得到执行。
+
+### 15. ThreadLocal
+
+1. 作用：
+   * **`threadLocal`类主要解决的就是让每个线程绑定自己的值，可以将`ThreadLocal`类形象的比喻成存放数据的盒子，盒子中可以存储每个线程的私有数据。**如果创建了一个`ThreadLocal`变量，那么访问这个变量的每个线程都会有这个变量的本地副本，这也是`ThreadLocal`变量名的由来。他们可以使用 `get()` 和 `set()` 方法来获取默认值或将其值更改为当前线程所存的副本的值，从而避免了线程安全问题。
+   * 比如每个线程SimpleDateFormat不同需要创建各自副本，比如为每个线程生成各自的随机数生成器。
+   * **每个`Thread`中都具备一个`ThreadLocalMap`，而`ThreadLocalMap`可以存储以`ThreadLocal`为 key ，Object 对象为 value 的键值对。**
+
+### 16. 线程池
+
+1. 概念：线程池就是管理一系列线程的资源池。当有任务要处理时，直接从线程池中获取线程来处理，处理完之后线程并不会立即被销毁，而是等待下一个任务。
+
+2. 作用：
+
+   * 降低资源消耗，通过重复利用降低线程创建和销毁时的消耗。
+   * 提高响应速度，任务到达时，可以不需要等待线程创建就立即执行。
+   * 提高线程的可管理性。
+
+3. 创建
+
+   1. 通过**`ThreadPoolExecutor`构造函数来创建**。
+   2. 通过**`Executor` 框架的工具类 `Executors` 来创建**。（超过任务队列长度会造成OOM错误，不推荐使用）
+      * `FixedThreadPool`：固定线程数量的线程池。该线程池中的线程数量始终不变。当有一个新的任务提交时，线程池中若有空闲线程，则立即执行。若没有，则新的任务会被暂存在一个任务队列中，待有线程空闲时，便处理在任务队列中的任务。使用LinkedBlockingQueue，会堆积大量请求导致OOM。
+      * `SingleThreadExecutor`： 只有一个线程的线程池。若多余一个任务被提交到该线程池，任务会被保存在一个任务队列中，待线程空闲，按先入先出的顺序执行队列中的任务。使用LinkedBlockingQueue，会堆积大量请求导致OOM。
+      * `CachedThreadPool`： 可根据实际情况调整线程数量的线程池。线程池的线程数量不确定，但若有空闲线程可以复用，则会优先使用可复用的线程。若所有线程均在工作，又有新的任务提交，则会创建新的线程处理任务。所有线程在当前任务执行完毕后，将返回线程池进行复用。使用的是同步队列 `SynchronousQueue`, 允许创建的线程数量为 `Integer.MAX_VALUE` ，如果任务数量过多且执行速度较慢，可能会创建大量的线程，从而导致 OOM。
+      * `ScheduledThreadPool`：给定的延迟后运行任务或者定期执行任务的线程池。使用的无界的延迟阻塞队列`DelayedWorkQueue`，任务队列最大长度为 `Integer.MAX_VALUE`,可能堆积大量的请求，从而导致 OOM。
+
+4. ThreadPoolExecutor参数
+
+   * `corePoolSize` : 任务队列未达到队列容量时，最大可以同时运行的线程数量。
+   * `maximumPoolSize` : 任务队列中存放的任务达到队列容量的时候，当前可以同时运行的线程数量变为最大线程数。
+   * `workQueue`: 新任务来的时候会先判断当前运行的线程数量是否达到核心线程数，如果达到的话，新任务就会被存放在队列中。
+
+   - `keepAliveTime`:线程池中的线程数量大于 `corePoolSize` 的时候，如果这时没有新的任务提交，核心线程外的线程不会立即销毁，而是会等待，直到等待的时间超过了 `keepAliveTime`才会被回收销毁。
+   - `unit` : `keepAliveTime` 参数的时间单位。
+   - `threadFactory` :executor 创建新线程的时候会用到。
+   - `handler` :拒绝策略
+
+5. 拒绝策略
+
+   * `ThreadPoolExecutor.AbortPolicy`：抛出 `RejectedExecutionException`来拒绝新任务的处理。
+   * `ThreadPoolExecutor.CallerRunsPolicy`：调用执行自己的线程运行任务，也就是直接在调用`execute`方法的线程中运行(`run`)被拒绝的任务，如果执行程序已关闭，则会丢弃该任务。因此这种策略会降低对于新任务提交速度，影响程序的整体性能。如果你的应用程序可以承受此延迟并且你要求任何一个任务请求都要被执行的话，你可以选择这个策略。
+   * `ThreadPoolExecutor.DiscardPolicy`：不处理新任务，直接丢弃掉。
+   * `ThreadPoolExecutor.DiscardOldestPolicy`：此策略将丢弃最早的未处理的任务请求。
+
+6. 阻塞队列
+
+   * LinkedBlockingQueue（无界队列）： 容量为integer.MAX_VALUE
+   * SynchronousQueue（同步队列）:`SynchronousQueue` 没有容量，不存储元素，目的是保证对于提交的任务，如果有空闲线程，则使用空闲线程来处理；否则新建一个线程来处理任务。
+   * DelayedWorkQueue(延迟阻塞队列)：内部元素并不是按照放入的时间排序，而是会按照延迟的时间长短对任务进行排序，内部采用的是“堆”的数据结构，可以保证每次出队的任务都是当前队列中执行时间最靠前的。`DelayedWorkQueue` 添加元素满了之后会自动扩容原来容量的 1/2，即永远不会阻塞，最大扩容可达 `Integer.MAX_VALUE`，所以最多只能创建核心线程数的线程。
+
+7. 任务处理流程
+
+![图解线程池实现原理](https://oss.javaguide.cn/github/javaguide/java/concurrent/thread-pool-principle.png)
+
+8. submit和excute
+   * submit可以提交Runnable任务和Callable任务；excute只能提交Runnable任务。
+   * **使用`execute()`提交任务**：当任务通过`execute()`提交到线程池并在执行过程中抛出异常时，如果这个异常没有在任务内被捕获，那么该异常会导致当前线程终止，并且异常会被打印到控制台或日志文件中。线程池会检测到这种线程终止，并创建一个新线程来替换它，从而保持配置的线程数不变。
+   * **使用`submit()`提交任务**：对于通过`submit()`提交的任务，如果在任务执行中发生异常，这个异常不会直接打印出来。相反，异常会被封装在由`submit()`返回的`Future`对象中。当调用`Future.get()`方法时，可以捕获到一个`ExecutionException`。在这种情况下，线程不会因为异常而终止，它会继续存在于线程池中，准备执行后续的任务。
+
+
+
