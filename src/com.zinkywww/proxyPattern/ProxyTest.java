@@ -1,6 +1,7 @@
 package proxyPattern;
 
 import java.lang.reflect.Proxy;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class ProxyTest {
     public static void main(String[] args) {
@@ -9,6 +10,7 @@ public class ProxyTest {
                 new Class<?>[]{InterfaceDemo.class},
                 new ServiceInvocationHandler(hello));
         proxy.sayHello();
+
 
     }
 }
