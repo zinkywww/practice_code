@@ -229,7 +229,7 @@
    * `HashSet`、`LinkedHashSet` 和 `TreeSet` 的主要区别在于底层数据结构不同。`HashSet` 的底层数据结构是哈希表（基于 `HashMap` 实现）。`LinkedHashSet` 的底层数据结构是链表和哈希表，元素的插入和取出顺序满足 FIFO。`TreeSet` 底层数据结构是红黑树，元素是有序的，排序的方式有自然排序和定制排序。
    * 底层数据结构不同又导致这三者的应用场景不同。`HashSet` 用于不需要保证元素插入和取出顺序的场景，`LinkedHashSet` 用于保证元素的插入和取出顺序满足 FIFO 的场景，`TreeSet` 用于支持对元素自定义排序规则的场景。
 
-4. HashTable和HashSet
+4. HashTable和HashMap
 
    * **线程是否安全：** `HashMap` 是非线程安全的，`Hashtable` 是线程安全的,因为 `Hashtable` 内部的方法基本都经过`synchronized` 修饰。
    * **效率：** 因为线程安全的问题，`HashMap` 要比 `Hashtable` 效率高一点。`Hashtable` 基本被淘汰；
@@ -480,26 +480,25 @@
 
    * 在jdk1.5（包含）版本之前，因为加锁和释放锁的过程JVM的底层都是由操作系统mutex lock来实现的，其中会涉及上下文的切换（即用户态和内核态的转换），性能消耗极其高，所以在当时synchronized锁是公认的重量级锁。后来JVM开发团队为解决性能问题，在jdk1.5版本中加入了JUC并发包，包下开发了很多Lock相关的锁，来解决同步的性能问题，同时也开始在后续的迭代版本中对synchronized锁不断的进行优化来提高性能，比如在jdk1.6版本中就引入了“偏向锁”和“轻量级锁”，通过锁的升级来解决不同并发场景下的性能问题。
 
-   1. 锁的状态
+   1. 锁的状态：
 
-      1. 无锁：对于共享资源，不涉及多线程的竞争访问。
-      2. 偏向锁：共享资源首次被访问时，JVM会对该共享资源对象做一些设置，比如将对象头中是否偏向锁标志位置为1，对象头中的线程ID设置为当前线程ID（注意：这里是操作系统的线程ID），后续当前线程再次访问这个共享资源时，会根据偏向锁标识跟线程ID进行比对是否相同，比对成功则直接获取到锁，进入**临界区域**（就是被锁保护，线程间只能串行访问的代码），这也是synchronized锁的可重入功能。
-      3. 轻量级锁：当多个线程同时申请共享资源锁的访问时，这就产生了竞争，JVM会先尝试使用轻量级锁，以CAS方式来获取锁（一般就是自旋加锁，不阻塞线程采用循环等待的方式），成功则获取到锁，状态为轻量级锁，失败（达到一定的自旋次数还未成功）则锁升级到重量级锁。
-      4. 重量级锁：如果共享资源锁已经被某个线程持有，此时是偏向锁状态，未释放锁前，再有其他线程来竞争时，则会升级到重量级锁，另外轻量级锁状态多线程竞争锁时，也会升级到重量级锁，重量级锁由操作系统来实现，所以性能消耗相对较高。
+      * 对象头：一部分存储对象自身的运行时数据，称为mark word。一部分存储指向方法区对象类型数据的指针；如果是数组对象，还有一个额外的部分用于存储数组长度。
+   
+      1. 无锁：偏向锁标识位是0，锁标识位是01。
+      2. 偏向锁：当一个共享资源首次被某个线程访问时，锁就会从无锁状态升级到偏向锁状态，偏向锁会在Markword的偏向线程ID里存储当前线程的操作系统线程ID，偏向锁标识位是1，锁标识位是01。
+   2. 轻量级锁：Markword存储指向Lock Record的指针，锁标志位是00。
+      4. 重量级锁：Markword存储指向monitor对象的地址，标志位10。
 
-   2. 锁升级过程![img](https://img2023.cnblogs.com/blog/3230688/202311/3230688-20231101142755570-1368637312.png)
+   3. 锁升级过程
 
-      1. 当JVM启动后，一个共享资源对象直到有线程第一个访问时，这段时间内是处于无锁状态，对象头的Markword里偏向锁标识位是0，锁标识位是01。
-
-      2. 当一个共享资源首次被某个线程访问时，锁就会从无锁状态升级到偏向锁状态，偏向锁会在Markword的偏向线程ID里存储当前线程的操作系统线程ID，偏向锁标识位是1，锁标识位是01。此后如果当前线程再次进入临界区域时，只比较这个偏向线程ID即可，这种情况是在只有一个线程访问的情况下，不再需要操作系统的重量级锁来切换上下文，提供程序的访问效率。
+      1. **当JVM启动后，一个共享资源对象直到有线程第一个访问时，这段时间内是处于无锁状态**.
+      2. 当锁对象第一次被线程获取时，虚拟机会将标志位置为01，偏向模式。同时使用CAS操作把获取到这个锁的ID记录在markword中，如果CAS成功，持有偏向锁的线程以后每次进入同步代码块时都可以不再进行任何同步操作。**当有另外一个线程尝试去获取这个锁时，偏向模式宣告结束，撤销偏向锁。根据锁对象是否处于被锁定状态，分别转为无锁和轻量级锁。**
          另外需要注意的是，由于硬件资源的不断升级，获取锁的成本随之下降，jdk15版本后默认关闭了偏向锁。如果未开启偏向锁（或者在JVM偏向锁延迟时间之前）有线程访问共享资源则直接由无锁升级为轻量级锁。
-
-      3. 如果未开启偏向锁（或者在JVM偏向锁延迟时间之前），有线程访问共享资源则直接由无锁升级为轻量级锁，开启偏向线程锁后，并且当前共享资源锁已经是偏向锁时，再有第二个线程访问共享资源锁时，此时锁可能升级为轻量级锁，也可能还是偏向锁状态，因为这取决于线程间的竞争情况，如有没有竞争，那么偏向锁的效率更高（因为频繁的锁竞争会导致偏向锁的撤销和升级到轻量级锁），继续保持偏向锁。如果有竞争，则锁状态会从偏向锁升级到轻量级锁，这种情况下轻量级锁效率会更高。
-
-         当第二个线程尝试获取偏向锁失败时，偏向锁会升级为轻量级锁，此时，JVM会使用CAS自旋操作来尝试获取锁，如果成功则进入临界区域，否则升级为重量级锁。
-         轻量级锁是在当前线程的栈帧中建立一个名为锁记录（Lock Record）的空间，尝试拷贝锁对象头的Markword到栈帧的Lock Record，若拷贝成功，JVM将使用CAS操作尝试将对象头的Markword更新为指向Lock Record的指针，并将Lock Record里的owner指针指向对象头的Markword。若拷贝失败,若当前只有一个等待线程，则可通过自旋继续尝试， 当自旋超过一定的次数，或者一个线程在持有锁，一个线程在自旋，又有第三个线程来访问时，轻量级锁就会膨胀为重量级锁。
-
-      4. 当轻量级锁获取锁失败时，说明有竞争存在，轻量级锁会升级为重量级锁，此时，JVM会将线程阻塞，直到获取到锁后才能进入临界区域，底层是通过操作系统的mutex lock来实现的，每个对象指向一个monitor对象，这个monitor对象在堆中与锁是关联的，通过monitorenter指令插入到同步代码块在编译后的开始位置，monitorexit指令插入到同步代码块的结束处和异常处，这两个指令配对出现。JVM的线程和操作系统的线程是对应的，重量级锁的Markword里存储的指针是这个monitor对象的地址，操作系统来控制内核态中的线程的阻塞和恢复，从而达到JVM线程的阻塞和恢复，涉及内核态和用户态的切换，影响性能，所以叫重量级锁。
+   
+      3. 升级轻量级锁时，虚拟机会在当前线程的栈帧中建立一个名为锁记录的空间，用于存储当前锁对象的markword的拷贝。然后，虚拟机使用CAS操作尝试将对象的mark word更新为指向锁记录的指针。若更新成功，则升级成功，锁标志被更新为00；若更新失败，虚拟机会检查此时mark word 是否指向当前栈帧，如果是表明当前线程已经拥有了这个对象锁，那么就可以直接进入同步块。如果不知向当前栈帧，则说明被其他线程抢占，此时膨胀为重量级锁。
+   
+      4. 当轻量级锁获取锁失败时，说明有竞争存在，轻量级锁会升级为重量级锁，重量级锁的Markword里存储的指针会被改为指向monitor对象。此时，JVM会将线程阻塞，直到获取到锁后才能进入临界区域，底层是通过操作系统的mutex lock来实现的。将monitorenter指令插入到同步代码块在编译后的开始位置，monitorexit指令插入到同步代码块的结束处和异常处，这两个指令配对出现。执行monitorenter时，尝试获取对象锁，如果获取成功，锁计数器加一，执行monitorexit时锁计数器减一，当计数器为0时锁被释放，以此实现可重入。
+   
 
 ### 15. ReentrantLock同步
 
@@ -524,13 +523,6 @@
 2. ReentrantReadWriteLock
 
    * `ReentrantReadWriteLock` 其实是两把锁，一把是 `WriteLock` (写锁)，一把是 `ReadLock`（读锁） 。读锁是共享锁，写锁是独占锁。读锁可以被同时读，可以同时被多个线程持有，而写锁最多只能同时被一个线程持有。
-
-3. Atomic原子类
-
-   * 利用volatile和CAS而没有使用锁，提供了一些原子方法操作数值。
-   * 基本类型
-   * 数组类型：使用原子的方式更新数组里的某个元素
-   * 引用类型：把对象设置进原子类引用对象中，使用CAS设置。
 
 ### 16. CAS非阻塞同步
 
@@ -559,13 +551,31 @@
    1. 区别:
       1. Java7 中 `ConcurrentHashMap` 使用的分段锁，也就是每一个 Segment 上同时只有一个线程可以操作，每一个 `Segment` 都是一个类似 `HashMap` 数组的结构，它可以扩容，它的冲突会转化为链表。但是 `Segment` 的个数一但初始化就不能改变。
       2. Java8 中的 `ConcurrentHashMap` 使用的 `Synchronized` 锁加 CAS 的机制。结构 进化成了 **Node 数组 + 链表 / 红黑树**，Node 是类似于一个 HashEntry 的结构。它的冲突再达到一定大小时会转化成红黑树，在冲突小于一定数量时又退回链表。
-   2. 初始化
+
+   2. 构造方法：
+
+      * sizeCtl与HashMap类似，可选择空参构造或者带参构造。如果使用带参构造传入容量，则会计算最小的大于传入容量的2的幂次，并初始化。
+
+   3. 初始化方法initTable：表的真正初始化是在添加元素后进行的
       * 初始化通过自旋和CAS操作完成，变量sizeCtl控制初始化状态：
         * sizeCtl<0,另外的线程正在初始化，当前线程让出CPU。
-        * sizeCtl>=0，没有线程正在进行初始化，通过CAS设置sizeCtl，然后进行初始化.如果sizeCtl=0则初始容量为DEFAULT_CAPACITY，否则为sizeCtl。
-   3. put方法：与HashMap类似，区别在于写入数据时需要同步。
+        * sizeCtl>=0，没有线程正在进行初始化，通过CAS设置sizeCtl值为-1，表示由当前线程初始化.如果sizeCtl=0则初始容量为DEFAULT_CAPACITY，否则为sizeCtl。然后创建对应容量大小的数组。
+
+   4. put方法：与HashMap类似，区别在于写入数据时需要同步。
+
+      * 如果数组未初始化，即数组为空或者长度为0，则调用initTable进行初始化。
+
       * 计算当前key属于哪一个桶，如果桶为空，使用CAS直接放入。
-      * 如果桶不为空，使用synchronized获取该桶的首节点锁，再进行类似于HashMap的插入（链表插入、红黑树插入、链表转换...）
+      * 如果桶不为空，使用synchronized获取该桶的首节点锁，再进行类似于HashMap的插入（链表插入、红黑树插入、链表转换...检查扩容条件）
+
+   5. 扩容：当元素个数达到阈值时调用transfer方法扩容
+
+      1. 初始化新表：如果nextTab为Null，则创建一个容量为旧表两倍的新表nextTab。
+      2. 数据迁移：
+         1. 初始化变量，比如 `stride` 用于分段迁移的步长，`fwd` 是前导节点，用于指示已经迁移完成的桶。
+         2. 使用transferIndex变量来记录工作进度，使用CAS来设置transferIndex进行多线程同时迁移时的同步，每次迁移一个步长的桶。
+         3. 处理桶的元素：如果当前桶为空，设置fwd节点指向该桶表示以处理；如果当前桶以迁移，跳过；否则，使用synchronized锁定当前桶并迁移，迁移过程与HashMap类似。
+      3. 结束扩容：清理标记，将table指向新表，nextTab置为null，更行sizeCtr为新表容量。
 
 2. CopyOnWriteArrayList
 
@@ -593,9 +603,9 @@
 
    4. PriorityBlockingQueue
 
-      * `PriorityBlockingQueue` 是一个支持优先级的无界阻塞队列。默认情况下元素采用自然顺序进行排序，也可以通过自定义类实现 `compareTo()` 方法来指定元素排序规则，或者初始化时通过构造器参数 `Comparator` 来指定排序规则。
+      * `PriorityBlockingQueue` 是一个支持优先级的无界阻塞队列。默认情况下元素采用自然顺序进行排序，也可以通过自定义类实现 `compareTo()` 方法来指定元素排序规则，或在构造方法中传入 `Comparator` 来指定排序规则。
 
-        `PriorityBlockingQueue` 并发控制采用的是可重入锁 `ReentrantLock`，队列为无界队列（`ArrayBlockingQueue` 是有界队列，`LinkedBlockingQueue` 也可以通过在构造函数中传入 `capacity` 指定队列最大的容量，但是 `PriorityBlockingQueue` 只能指定初始的队列大小，后面插入元素的时候，**如果空间不够的话会自动扩容**）。
+        `PriorityBlockingQueue` 并发控制采用的是可重入锁 `ReentrantLock`，队列为无界队列，只能指定初始的队列大小，后面插入元素的时候，**如果空间不够的话会自动扩容**。
 
         简单地说，它就是 `PriorityQueue` 的线程安全版本。不可以插入 null 值，同时，插入队列的对象必须是可比较大小的（comparable），否则报 `ClassCastException` 异常。它的插入操作 put 方法不会 block，因为它是无界队列（take 方法在队列为空的时候会阻塞）。
 
@@ -623,8 +633,8 @@
 
 5. AQS实现Semaphor
 
-   * Semaphor是共享锁，state的值初始化为许可证数量。信号量的P操作使用tryAcquire()实现，如果state大于0则获取成功，并利用CAS将state值减一，如果小于等于0则获取失败，加入等待队列。
-   * 释放许可证使用release，使用CAS将state值加1，并唤醒一个等待线程。被唤醒的线程会重新尝试获取许可证。
+   * Semaphor是共享锁，state的值初始化为许可证数量。使用CAS操作尝试减少当前许可数量。如果许可不足（remaining < 0），则返回负值，表示获取失败；否则，返回剩余的许可数量。
+   * 释放许可证使用release，调用tryReleaseShared，使用CAS将state值加1，并唤醒一个等待线程。被唤醒的线程会重新尝试获取许可证。
 
 6. AQS实现CountDownLatch
 
@@ -652,9 +662,9 @@
 
    1. 通过**`ThreadPoolExecutor`构造函数来创建**。
    2. 通过**`Executor` 框架的工具类 `Executors` 来创建**。（超过任务队列长度会造成OOM错误，不推荐使用）
-      * `FixedThreadPool`：固定线程数量的线程池。该线程池中的线程数量始终不变。当有一个新的任务提交时，线程池中若有空闲线程，则立即执行。若没有，则新的任务会被暂存在一个任务队列中，待有线程空闲时，便处理在任务队列中的任务。使用LinkedBlockingQueue，会堆积大量请求导致OOM。
-      * `SingleThreadExecutor`： 只有一个线程的线程池。若多余一个任务被提交到该线程池，任务会被保存在一个任务队列中，待线程空闲，按先入先出的顺序执行队列中的任务。使用LinkedBlockingQueue，会堆积大量请求导致OOM。
-      * `CachedThreadPool`： 可根据实际情况调整线程数量的线程池。线程池的线程数量不确定，但若有空闲线程可以复用，则会优先使用可复用的线程。若所有线程均在工作，又有新的任务提交，则会创建新的线程处理任务。所有线程在当前任务执行完毕后，将返回线程池进行复用。使用的是同步队列 `SynchronousQueue`, 允许创建的线程数量为 `Integer.MAX_VALUE` ，如果任务数量过多且执行速度较慢，可能会创建大量的线程，从而导致 OOM。
+      * `FixedThreadPool`：固定线程数量的线程池。该线程池中的线程数量始终不变。当有一个新的任务提交时，线程池中若有空闲线程，则立即执行。若没有，则新的任务会被暂存在一个任务队列中，待有线程空闲时，便处理在任务队列中的任务。使用LinkedBlockingQueue，默认是一个无界队列。这意味着队列可以无限增长，可能导致内存耗尽。（解决：使用`ThreadPoolExecutor`时，可以指定一个有界队列，以限制任务队列的大小，从而避免潜在的资源耗尽问题。）
+      * `SingleThreadExecutor`： 只有一个线程的线程池。若多余一个任务被提交到该线程池，任务会被保存在一个任务队列中，待线程空闲，按先入先出的顺序执行队列中的任务。使用LinkedBlockingQueue，默认是一个无界队列。这意味着队列可以无限增长，可能导致内存耗尽。
+      * `CachedThreadPool`： 可根据实际情况调整线程数量的线程池。线程池的线程数量不确定，但若有空闲线程可以复用，则会优先使用可复用的线程。若所有线程均在工作，又有新的任务提交，则会创建新的线程处理任务。所有线程在当前任务执行完毕后，将返回线程池进行复用。`SynchronousQueue`，允许创建任意数量的线程。如果任务提交速度远大于线程处理速度，会导致创建大量线程，增加系统负载，可能导致`OutOfMemoryError`。（解决：使用`ThreadPoolExecutor`时，可以控制最大线程数，通过合理配置`maximumPoolSize`来限制线程的数量，避免过多线程导致系统资源耗尽。）
       * `ScheduledThreadPool`：给定的延迟后运行任务或者定期执行任务的线程池。使用的无界的延迟阻塞队列`DelayedWorkQueue`，任务队列最大长度为 `Integer.MAX_VALUE`,可能堆积大量的请求，从而导致 OOM。
 
 4. ThreadPoolExecutor参数
@@ -677,17 +687,146 @@
 
 6. 阻塞队列
 
-   * LinkedBlockingQueue（无界队列）： 容量为integer.MAX_VALUE
-   * SynchronousQueue（同步队列）:`SynchronousQueue` 没有容量，不存储元素，目的是保证对于提交的任务，如果有空闲线程，则使用空闲线程来处理；否则新建一个线程来处理任务。
+   * ArrayBlockingQueue:有界队列，按FIFO进行排列.适用于需要有界队列场景，防止任务堆积导致内存溢出。
+   * LinkedBlockingQueue：可选有界队列，FIFO，可传入容量，默认容量为Integer.MAX_VALUE.适用于较高并发量的场景，默认无界。
+   * SynchronousQueue: 同步队列，`SynchronousQueue` 没有容量，不存储元素，目的是保证对于提交的任务，如果有空闲线程，则使用空闲线程来处理；否则新建一个线程来处理任务。适用于任务提交速度和任务处理速度相同的场景，通常用于直接传递任务给工作线程。
+   * PriorityBlokingQueue: 优先级阻塞队列，元素顺序可通过传入Comparator决定。适用于需要处理优先级的场景。
    * DelayedWorkQueue(延迟阻塞队列)：内部元素并不是按照放入的时间排序，而是会按照延迟的时间长短对任务进行排序，内部采用的是“堆”的数据结构，可以保证每次出队的任务都是当前队列中执行时间最靠前的。`DelayedWorkQueue` 添加元素满了之后会自动扩容原来容量的 1/2，即永远不会阻塞，最大扩容可达 `Integer.MAX_VALUE`，所以最多只能创建核心线程数的线程。
 
 7. 任务处理流程
 
 ![图解线程池实现原理](https://oss.javaguide.cn/github/javaguide/java/concurrent/thread-pool-principle.png)
 
+```java
+public void execute(Runnable command) {
+    // 如果task为null, 抛出
+    if (command == null)
+        throw new NullPointerException();
+    
+    // 获得ctl的int值
+    int c = ctl.get();
+    // workerCount小于corePoolSize
+    if (workerCountOf(c) < corePoolSize) {
+        // 添加一个新的worker, 作为核心线程池的线程
+        if (addWorker(command, true))
+            // 添加worker作为核心线程成功, execute方法退出
+            return;
+        // 添加worker作为核心线程失败, 重新获取ctl的int值
+        c = ctl.get();
+    }
+    // 线程池是RUNNING状态并且task入阻塞队列成功
+    if (isRunning(c) && workQueue.offer(command)) {
+        // 二次检测, 再次获取ctl的值
+        int recheck = ctl.get();
+        // 线程池不是RUNNING状态并且当前task从workerQueue被移除成功
+        if (! isRunning(recheck) && remove(command))
+            // 执行拒绝策略
+            reject(command);
+        // 线程池中的workerCount为0
+        else if (workerCountOf(recheck) == 0)
+            // 启动一个非核心线程, 由于这里的task参数为null, 该线程会从workerQueue拉去任务
+            addWorker(null, false);
+    }
+    // 添加一个非核心线程执行
+    else if (!addWorker(command, false))
+        // 添加一个非核心线程失败, 执行拒绝策略
+        reject(command);
+}
+```
+
+```java
+// 用于添加线程，core表示是否添加为核心线程
+private boolean addWorker(Runnable firstTask, boolean core) {
+    retry:
+    for (;;) {
+        int c = ctl.get();
+        // 线程池运行状态
+        int rs = runStateOf(c);
+
+        // 如果线程池运行状态大于等于SHUTDOWN, 提交的firstTask为null, workQueue为null,返回false
+        if (rs >= SHUTDOWN &&
+            ! (rs == SHUTDOWN &&
+               firstTask == null &&
+               ! workQueue.isEmpty()))
+            return false;
+
+        for (;;) {
+            // workerCount
+            int wc = workerCountOf(c);
+            // 线程数大于了2的29次方-1
+            // 或者想要添加为核心线程但是核心线程池满
+            // 或者想要添加为临时线程, 但是workerCount等于或大于了最大的线程池线程数maximumPoolSize, 返回false
+            if (wc >= CAPACITY ||
+                wc >= (core ? corePoolSize : maximumPoolSize))
+                return false;
+            // CAS的方式让workerCount数量增加1,如果成功, 终止循环
+            if (compareAndIncrementWorkerCount(c))
+                break retry;
+            c = ctl.get();
+            // 再次检查runState, 如果被更改, 重头执行retry代码
+            if (runStateOf(c) != rs)
+                continue retry;
+            // 其他的, 上面的CAS如果由于workerCount被其他线程改变而失败, 继续内部的for循环
+        }
+    }
+
+    // 标志位workerStarted, workerAdded
+    boolean workerStarted = false;
+    boolean workerAdded = false;
+    Worker w = null;
+    try {
+        // 传入task对象, 创建Worker对象
+        w = new Worker(firstTask);
+        // 从worker对象中回去Thread对象
+        final Thread t = w.thread;
+        if (t != null) {
+            final ReentrantLock mainLock = this.mainLock;
+            // 获取mainLock锁
+            mainLock.lock();
+            try {
+                // 获取mainLock锁之后, 再次检查runState
+                int rs = runStateOf(ctl.get());
+
+                // 如果是RUNNING状态, 或者是SHUTDOWN状态并且传入的task为null(执行workQueue中的task)
+                if (rs < SHUTDOWN ||
+                    (rs == SHUTDOWN && firstTask == null)) {
+                    // 线程已经被启动, 抛出IllegalThreadStateException
+                    if (t.isAlive()) 
+                        throw new IllegalThreadStateException();
+                    // 将worker对象添加到HashSet
+                    workers.add(w);
+                    int s = workers.size();
+                    // 线程池中曾经达到的最大线程数(上面4.2.6提到过)
+                    if (s > largestPoolSize)
+                        largestPoolSize = s;
+                    // worker被添加成功
+                    workerAdded = true;
+                }
+            } finally {
+                // 释放mainLock锁
+                mainLock.unlock();
+            }
+            // 如果worker被添加成功, 启动线程, 执行对应的task
+            if (workerAdded) {
+                t.start();
+                workerStarted = true;
+            }
+        }
+    } finally {
+        // 如果线程启动失败, 执行addWorkerFailed方法，将以修改的操作回滚
+        if (! workerStarted)
+            addWorkerFailed(w);
+    }
+    return workerStarted;
+}
+
+```
+
+
+
 8. submit和excute
    * submit可以提交Runnable任务和Callable任务；excute只能提交Runnable任务。
-   * **使用`execute()`提交任务**：当任务通过`execute()`提交到线程池并在执行过程中抛出异常时，如果这个异常没有在任务内被捕获，那么该异常会导致当前线程终止，并且异常会被打印到控制台或日志文件中。线程池会检测到这种线程终止，并创建一个新线程来替换它，从而保持配置的线程数不变。
+   * **使用`execute()`提交任务**：当任务通过`execute()`提交到线程池并在执行过程中抛出异常时，如果这个异常没有在任务内被捕获，那么该异常会导致当前线程终止，并且异常会被打印到控制台或日志文件中。线程池会检测到这种线程终止，并创建一个新线程来替换它，从·而保持配置的线程数不变。
    * **使用`submit()`提交任务**：对于通过`submit()`提交的任务，如果在任务执行中发生异常，这个异常不会直接打印出来。相反，异常会被封装在由`submit()`返回的`Future`对象中。当调用`Future.get()`方法时，可以捕获到一个`ExecutionException`。在这种情况下，线程不会因为异常而终止，它会继续存在于线程池中，准备执行后续的任务。
 
 
