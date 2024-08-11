@@ -29,18 +29,17 @@ public class loopPrintABC {
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
 
-        MyThread myThread1 = new MyThread(0, lock, condition);
-        MyThread myThread2 = new MyThread(1, lock, condition);
-        MyThread myThread3 = new MyThread(2, lock, condition);
+        MyThread myThread1 = new MyThread(0, lock, condition,flag);
+        MyThread myThread2 = new MyThread(1, lock, condition,flag);
+        MyThread myThread3 = new MyThread(2, lock, condition,flag);
         pool.execute(myThread1);
         pool.execute(myThread2);
         pool.execute(myThread3);
-        Thread.sleep(1000L);
-        lock.lock();
-        condition[0].signalAll();
-        lock.unlock();
+//        Thread.sleep(1000L);
+//        lock.lock();
+//        condition[0].signalAll();
+//        lock.unlock();
         pool.shutdown();
-
 
     }
 }

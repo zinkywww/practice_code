@@ -12,33 +12,31 @@ public class MyThread extends Thread {
     private int index;
     ReentrantLock lock;
     Condition[] condition;
+    int[] flag;
 
     public MyThread() {}
-    public MyThread(int index, ReentrantLock lock, Condition[] condition) {
+    public MyThread(int index, ReentrantLock lock, Condition[] condition,int[] flag) {
         this.index = index;
         this.lock = lock;
         this.condition = condition;
+        this.flag = flag;
     }
-
     @Override
     public void run() {
         for (int i = 0; i < 1000; i++) {
             lock.lock();
             try{
-                System.out.println(Thread.currentThread());
-                condition[index].await();
-
-                System.out.println((char)('A'+index)+String.valueOf(i));
+                if(flag[0] != index) {
+                    condition[index].await();
+                }
+                System.out.println((char)('A'+index));
+                flag[0]=(flag[0]+1)%3;
                 condition[(index+1)%3].signal();
-
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             } finally {
                 lock.unlock();
             }
         }
-
-
-
     }
 }
